@@ -1,20 +1,15 @@
-import { DualShock4 } from './index'
-import { hslToRgb } from './util/colorConversion'
+import { hslToRgb } from './util/colorConversion.js'
 
 /**
  * Stores and manages the lightbar state.
  */
 export default class DualShock4Lightbar {
   /** @ignore */
-  constructor (private controller : DualShock4) {
-  }
-  
+  _r = 0
   /** @ignore */
-  private _r = 0
+  _g = 0
   /** @ignore */
-  private _g = 0
-  /** @ignore */
-  private _b = 0
+  _b = 0
 
   /**
    * Send Lightbar data to the controller.
@@ -32,7 +27,7 @@ export default class DualShock4Lightbar {
     return this._r
   }
 
-  set r (value : number) {
+  set r (value) {
     this._r = Math.min(255, Math.max(0, value))
     this.updateLightbar()
   }
@@ -42,7 +37,7 @@ export default class DualShock4Lightbar {
     return this._g
   }
 
-  set g (value : number) {
+  set g (value) {
     this._g = Math.min(255, Math.max(0, value))
     this.updateLightbar()
   }
@@ -52,7 +47,7 @@ export default class DualShock4Lightbar {
     return this._b
   }
 
-  set b (value : number) {
+  set b (value) {
     this._b = Math.min(255, Math.max(0, value))
     this.updateLightbar()
   }
@@ -63,7 +58,7 @@ export default class DualShock4Lightbar {
    * @param g - Green color intensity (0-255)
    * @param b - Blue color intensity (0-255)
    */
-  async setColorRGB (r : number, g : number, b : number) {
+  setColorRGB (r, g, b) {
     this._r = Math.min(255, Math.max(0, r))
     this._g = Math.min(255, Math.max(0, g))
     this._b = Math.min(255, Math.max(0, b))
@@ -76,7 +71,7 @@ export default class DualShock4Lightbar {
    * @param s - Saturation
    * @param l - Lightness
    */
-  async setColorHSL (h : number, s : number, l : number) {
+  setColorHSL (h, s, l) {
     const color = hslToRgb(h, s, l)
     return this.setColorRGB(color.r, color.g, color.b)
   }

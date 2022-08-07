@@ -1,21 +1,30 @@
-import { defaultState, DualShock4Interface } from './state'
-import DualShock4Lightbar from './lightbar'
-import DualShock4Rumble from './rumble'
-import { normalizeThumbstick, normalizeTrigger } from './util/normalize'
-import { Buffer } from 'buffer'
-import { crc32 } from 'crc'
+import { defaultState } from './state.js'
+import DualShock4Lightbar from './lightbar.js'
+import DualShock4Rumble from './rumble.js'
+import { normalizeThumbstick, normalizeTrigger } from './util/normalize.js'
+import { Buffer } from 'https://esm.sh/buffer'
+import { crc32 } from 'https://esm.sh/crc'
+
+ 
+const Interface = {
+  Disconnected: 'none',
+  /** The controller is connected over USB */
+  USB: 'usb',
+  /** The controller is connected over BT */
+  Bluetooth: 'bt'
+}
 
 /**
  * Main class.
  */
 export class DualShock4 {
   /** Internal WebHID device */
-  device ?: HIDDevice
+  device
 
   /** Raw contents of the last HID Report sent by the controller. */
-  lastReport ?: ArrayBuffer
+  lastReport
   /** Raw contents of the last HID Report sent to the controller. */
-  lastSentReport ?: ArrayBuffer
+  lastSentReport
 
   /** Current controller state */
   state = defaultState
@@ -25,7 +34,8 @@ export class DualShock4 {
   /** Allows rumble control */
   rumble = new DualShock4Rumble(this)
 
-  constructor () {
+  constructor ($) {
+    this.$ = $
     if (!navigator.hid || !navigator.hid.requestDevice) {
       throw new Error('WebHID not supported by browser or not available.')
     }
@@ -72,7 +82,7 @@ export class DualShock4 {
 
     await this.device.open()
 
-    this.device.oninputreport = (e : HIDInputReportEvent) => this.processControllerReport(e)
+    this.device.oninputreport = (e) => requestAnimationFrame(this.processControllerReport(e))
   }
 
   /**
@@ -82,17 +92,17 @@ export class DualShock4 {
    * 
    * @param report - HID Report sent by the controller.
    */
-  private processControllerReport (report : HIDInputReportEvent) {
+   processControllerReport (report) {
     const { data } = report
     this.lastReport = data.buffer
 
     // Interface is unknown
-    if (this.state.interface === DualShock4Interface.Disconnected) {
+    if (this.state.interface === Interface.Disconnected) {
       if (data.byteLength === 63) {
-        this.state.interface = DualShock4Interface.USB
+        this.state.interface = Interface.USB
       } else {
-        this.state.interface = DualShock4Interface.Bluetooth
-        this.device!.receiveFeatureReport(0x02)
+        this.state.interface = Interface.Bluetooth
+        this.device.receiveFeatureReport(0x02)
         return
       }
       // Player 1 Color
@@ -102,13 +112,13 @@ export class DualShock4 {
     this.state.timestamp = report.timeStamp
 
     // USB Reports
-    if (this.state.interface === DualShock4Interface.USB && report.reportId === 0x01) {
+    if (this.state.interface === Interface.USB && report.reportId === 0x01) {
       this.updateState(data)
     }
     // Bluetooth Reports
-    if (this.state.interface === DualShock4Interface.Bluetooth && report.reportId === 0x11) {
+    if (this.state.interface === Interface.Bluetooth && report.reportId === 0x11) {
       this.updateState(new DataView(data.buffer, 2))
-      this.device!.receiveFeatureReport(0x02)
+      this.device.receiveFeatureReport(0x02)
     }
   }
 
@@ -119,75 +129,81 @@ export class DualShock4 {
    * 
    * @param data - Normalized data from the HID report.
    */
-  private updateState (data : DataView) {
+  updateState (data) {
+    const state = {
+      ...defaultState
+    }
+
     // Update thumbsticks
-    this.state.axes.leftStickX = normalizeThumbstick(data.getUint8(0))
-    this.state.axes.leftStickY = normalizeThumbstick(data.getUint8(1))
-    this.state.axes.rightStickX = normalizeThumbstick(data.getUint8(2))
-    this.state.axes.rightStickY = normalizeThumbstick(data.getUint8(3))
+    state.axes.leftStickX = normalizeThumbstick(data.getUint8(0))
+    state.axes.leftStickY = normalizeThumbstick(data.getUint8(1))
+    state.axes.rightStickX = normalizeThumbstick(data.getUint8(2))
+    state.axes.rightStickY = normalizeThumbstick(data.getUint8(3))
 
     // Update main buttons
     const buttons1 = data.getUint8(4)
-    this.state.buttons.triangle = !!(buttons1 & 0x80)
-    this.state.buttons.circle = !!(buttons1 & 0x40)
-    this.state.buttons.cross = !!(buttons1 & 0x20)
-    this.state.buttons.square = !!(buttons1 & 0x10)
+    state.buttons.triangle = !!(buttons1 & 0x80)
+    state.buttons.circle = !!(buttons1 & 0x40)
+    state.buttons.cross = !!(buttons1 & 0x20)
+    state.buttons.square = !!(buttons1 & 0x10)
     // Update D-Pad
     const dPad = buttons1 & 0x0F
-    this.state.buttons.dPadUp = dPad === 7 || dPad === 0 || dPad === 1
-    this.state.buttons.dPadRight = dPad === 1 || dPad === 2 || dPad === 3
-    this.state.buttons.dPadDown = dPad === 3 || dPad === 4 || dPad === 5
-    this.state.buttons.dPadLeft = dPad === 5 || dPad === 6 || dPad === 7
+    state.buttons.dPadUp = dPad === 7 || dPad === 0 || dPad === 1
+    state.buttons.dPadRight = dPad === 1 || dPad === 2 || dPad === 3
+    state.buttons.dPadDown = dPad === 3 || dPad === 4 || dPad === 5
+    state.buttons.dPadLeft = dPad === 5 || dPad === 6 || dPad === 7
     // Update additional buttons
     const buttons2 = data.getUint8(5)
-    this.state.buttons.l1 = !!(buttons2 & 0x01)
-    this.state.buttons.r1 = !!(buttons2 & 0x02)
-    this.state.buttons.l2 = !!(buttons2 & 0x04)
-    this.state.buttons.r2 = !!(buttons2 & 0x08)
-    this.state.buttons.share = !!(buttons2 & 0x10)
-    this.state.buttons.options = !!(buttons2 & 0x20)
-    this.state.buttons.l3 = !!(buttons2 & 0x40)
-    this.state.buttons.r3 = !!(buttons2 & 0x80)
+    state.buttons.l1 = !!(buttons2 & 0x01)
+    state.buttons.r1 = !!(buttons2 & 0x02)
+    state.buttons.l2 = !!(buttons2 & 0x04)
+    state.buttons.r2 = !!(buttons2 & 0x08)
+    state.buttons.share = !!(buttons2 & 0x10)
+    state.buttons.options = !!(buttons2 & 0x20)
+    state.buttons.l3 = !!(buttons2 & 0x40)
+    state.buttons.r3 = !!(buttons2 & 0x80)
     const buttons3 = data.getUint8(6)
-    this.state.buttons.playStation = !!(buttons3 & 0x01)
-    this.state.buttons.touchPadClick = !!(buttons3 & 0x02)
+    state.buttons.playStation = !!(buttons3 & 0x01)
+    state.buttons.touchPadClick = !!(buttons3 & 0x02)
 
     // Update Triggers
-    this.state.axes.l2 = normalizeTrigger(data.getUint8(7))
-    this.state.axes.r2 = normalizeTrigger(data.getUint8(8))
+    state.axes.l2 = normalizeTrigger(data.getUint8(7))
+    state.axes.r2 = normalizeTrigger(data.getUint8(8))
 
     // Update battery level
-    this.state.charging = !!(data.getUint8(29) & 0x10)
-    if (this.state.charging) {
-      this.state.battery = Math.min(Math.floor((data.getUint8(29) & 0x0F) * 100 / 11))
+    state.charging = !!(data.getUint8(29) & 0x10)
+    if (state.charging) {
+      state.battery = Math.min(Math.floor((data.getUint8(29) & 0x0F) * 100 / 11))
     } else {
-      this.state.battery = Math.min(100, Math.floor((data.getUint8(29) & 0x0F) * 100 / 8))
+      state.battery = Math.min(100, Math.floor((data.getUint8(29) & 0x0F) * 100 / 8))
     }
     
     // Update motion input
-    this.state.axes.gyroX = data.getUint16(13)
-    this.state.axes.gyroY = data.getUint16(15)
-    this.state.axes.gyroZ = data.getUint16(17)
-    this.state.axes.accelX = data.getInt16(19)
-    this.state.axes.accelY = data.getInt16(21)
-    this.state.axes.accelZ = data.getInt16(23)
+    state.axes.gyroX = data.getUint16(13)
+    state.axes.gyroY = data.getUint16(15)
+    state.axes.gyroZ = data.getUint16(17)
+    state.axes.accelX = data.getInt16(19)
+    state.axes.accelY = data.getInt16(21)
+    state.axes.accelZ = data.getInt16(23)
 
     // Update touchpad
-    this.state.touchpad.touches = []
+    state.touchpad.touches = []
     if (!(data.getUint8(34) & 0x80)) {
-      this.state.touchpad.touches.push({
+      state.touchpad.touches.push({
         touchId: data.getUint8(34) & 0x7F,
         x: (data.getUint8(36) & 0x0F) << 8 | data.getUint8(35),
         y: data.getUint8(37) << 4 | (data.getUint8(36) & 0xF0) >> 4
       })
     }
     if (!(data.getUint8(38) & 0x80)) {
-      this.state.touchpad.touches.push({
+      state.touchpad.touches.push({
         touchId: data.getUint8(38) & 0x7F,
         x: (data.getUint8(40) & 0x0F) << 8 | data.getUint8(39),
         y: data.getUint8(41) << 4 | (data.getUint8(40) & 0xF0) >> 4
       })
     }
+
+    this.$.write({ controllers: [state] })
   }
 
   /**
@@ -197,10 +213,10 @@ export class DualShock4 {
    * 
    * **Currently broken over Bluetooth, doesn't do anything**
    */
-  async sendLocalState () {
+  sendLocalState () {
     if (!this.device) throw new Error('Controller not initialized. You must call .init() first!')
 
-    if (this.state.interface === DualShock4Interface.USB) {
+    if (this.state.interface === Interface.USB) {
       const report = new Uint8Array(16)
 
       // Report ID
