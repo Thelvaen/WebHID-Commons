@@ -58,6 +58,8 @@ export class DualShock4 {
         { vendorId: 0x054C, productId: 0x05C4 },
         { vendorId: 0x054C, productId: 0x09CC },
         { vendorId: 0x054C, productId: 0x05C5 },
+        // Test DS5
+        { vendorId: 0x054C, productId: 0x0CE6 },
         // Razer Raiju
         { vendorId: 0x1532, productId: 0x1000 },
         { vendorId: 0x1532, productId: 0x1007 },
